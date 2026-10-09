@@ -1,0 +1,43 @@
+# Source documents (often copyrighted — keep out of git)
+/data/raw
+
+# Generated artifacts
+data/ocr/**
+data/interim/**
+!data/**/.gitkeep
+*.faiss
+*.index
+
+# Models / checkpoints / training artifacts
+/models
+/data/train
+*.safetensors
+*.bin
+*.gguf
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.env
+
+# OS / editor
+.DS_Store
+.ipynb_checkpoints/
+
+# Corpus-derived data (sources are partly release:false — see DATA_SPEC §10); only reports and the source registry are tracked
+/data/corpus
+data/v1/**
+!data/v1/reports/
+!data/v1/reports/**
+!data/v1/sources.yaml
+
+# Local tool settings
+.claude/settings.local.json
+
+# Live coordination notes between sessions (edited in place in the shared checkout; not versioned)
+/DEPUTY_COORDINATION.md
+
+# v0 reproduction links/venv (legacy/v0/REPRODUCE.md)
+legacy/v0/data
+legacy/v0/.venv/

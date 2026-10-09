@@ -1,0 +1,73 @@
+[project]
+name = "retrievve"
+version = "0.1.0"
+description = "French ↔ Gabonese languages (Fang, Punu, Nzebi, Myene, Lembaama): data pipeline, RAG, fine-tuning, eval"
+requires-python = ">=3.12"
+authors = [{ name = "Vhiny Mombo" }]
+# Base deps: everything the data pipeline, analysis and tests need. Runs on Linux CI (no mlx).
+dependencies = [
+    "pyyaml==6.0.3",
+    "numpy==2.5.0",
+    "tokenizers==0.22.2",
+    "jinja2==3.1.6",
+]
+
+[project.optional-dependencies]
+# Apple-silicon training / inference (not installable on Linux CI)
+mlx = [
+    "mlx==0.31.2; sys_platform == 'darwin'",
+    "mlx-lm==0.31.3; sys_platform == 'darwin'",
+]
+rag = [
+    "faiss-cpu==1.14.3",
+    "sentence-transformers==5.6.0",
+]
+api = [
+    "fastapi==0.138.1",
+    "uvicorn==0.49.0",
+]
+# v0 ingestion (PDF/OCR/HTML) used by legacy/v0
+ingest = [
+    "pymupdf==1.27.2.3",
+    "pytesseract==0.3.13",
+    "beautifulsoup4==4.15.0",
+    "ftfy==6.3.1",
+]
+hf = [
+    "transformers==5.12.1",
+    "datasets==5.0.0",
+    "huggingface-hub==1.21.0",
+]
+
+[project.scripts]
+retrievve = "retrievve.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/retrievve"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["legacy", "notebooks", "paper", "app", "data", "models"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff.lint.per-file-ignores]
+# analysis scripts were written stdlib-style before the package existed; owners tidy them when they next touch them
+"src/retrievve/analysis/*" = ["E501", "E731", "E741", "B007", "B905"]

@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.7.14"
+          enable-cache: true
+      - name: Install (base deps + dev group; no mlx/cuda extras on CI)
+        run: uv sync --frozen --python 3.13
+      - name: Ruff
+        run: uv run --frozen ruff check src/retrievve tests
+      - name: Pytest
+        run: uv run --frozen pytest

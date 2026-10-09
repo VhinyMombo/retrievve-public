@@ -1,0 +1,167 @@
+# retrievve data pipeline v1 — all tunable parameters live here (DATA_SPEC.md v0.4).
+# Thresholds marked TBD-stats are placeholders until the §8 stats report (data scientist) fixes them.
+spec_version: "v0.8"
+thresholds_final: true                 # spec v0.6 signed off; freeze is per slice (frozen_slices)
+seed: 1729
+
+paths:
+  raw: data/raw
+  v0_corpus: data/corpus          # read-only (v0); used by the v0 adapter for Bible/NT alignments
+  out: data/v1
+  sources: data/v1/sources.yaml
+
+# Sources excluded from the build regardless of sources.yaml (reviewed policy, with reason). Excluded sources feed
+# nothing: no corpus records, SFT, LM, RAG or eval.
+sources_disabled:
+  fang_galley_dict_v0: "replaced by fang_galley_dict (v1 parser from the OCR text: dehyphenation, tone groups,
+    POS fixes, headers; 88's spot check PR #19)"
+  fang_galley_examples_v0: "excluded from SFT, LM and RAG (7d after PR #19: 46/63 valid pairs, 29/63 on the right
+    entry); returns only after a re-parse with italic/roman splitting and a fresh-sample recheck"
+  fang_nt_web_v0: "v0 NT alignment is wrong for most books (88, findings_v0.md §1: proper-noun agreement 13%);
+    excluded until realigned (realignment PR, acceptance >= 0.8 per book)"
+
+# Fang NT realignment: books admitted to the build. Spec decision (7d, 2026-10-10) from 88's official run (#39):
+# books passing BOTH the proper-noun gate (--strict) and the name-independent --length check. Never set
+# automatically. Test = REV, val = HEB (splits.bible_*_books.fan). Everything else stays out.
+nt_books_accepted: [MAT, MRK, LUK, JHN, ACT, ROM, 2CO, PHP, COL, 1TH, HEB, REV]
+
+languages:
+  train_eval: [fan, puu]
+  eval_only: [nzb, mye, lev]
+
+# column header / filename token -> ISO 639-3 (or "fr")
+lang_aliases:
+  fang: fan
+  fan: fan
+  punu: puu
+  yipunu: puu
+  puu: puu
+  nzebi: nzb
+  nzb: nzb
+  myene: mye
+  mpongwe: mye
+  mye: mye
+  lembaama: lev
+  lev: lev
+  french: fr
+  francais: fr
+  français: fr
+  fr: fr
+
+normalize:
+  form: NFC
+  # look-alike unification, applied to target-language text only (logged in reports/normalization.json)
+  lookalikes:
+    "ε": "ɛ"     # Greek epsilon
+    "Ε": "Ɛ"
+    "ↄ": "ɔ"     # reversed c
+    "Ↄ": "Ɔ"
+    "ǝ": "ə"     # turned e -> schwa (per-language override below if a source really means ǝ)
+    "Ǝ": "Ə"
+  per_lang_lookalikes: {}
+  # all-caps lexicon headwords (sources with headword_case: upper) are lowercased, except these proper nouns
+  headword_proper_nouns: []          # to be filled from the data (88 / spot check); keys compared via text_key
+  # spec v0.6: a variant is an elision mark only between two letters; otherwise left as is. ’ and ‘ are NOT
+  # in the blanket mapping (quotation marks in the NT / LS1910).
+  apostrophe_variants: ["'", "`", "´", "ʼ"]
+  apostrophe_canonical:
+    default: "'"
+    puu: "ʼ"                             # U+02BC modifier letter apostrophe
+    fan: "'"
+  strip_verse_numbers: true
+
+# v0.7 §7b lexicon probe: frozen headword sample per language, removed from SFT lex tasks, kept in RAG
+lexprobe:
+  sizes: {puu: 400, fan: 0}             # fan: 200 after the Galley OCR gate
+
+eval:
+  descriptive_only_below: 50            # eval-only languages under this many pairs: descriptive only
+
+# v0.6 §3: religious slices freeze only after 88's align_check passes (>= 0.8 per book and per tail range)
+religious_gate_passed: {puu: true, fan: false}   # puu: test/val tails pass (7d, 2026-10-10)
+
+splits:
+  bible_test_books:
+    fan: [REV]                          # 7d 2026-10-10: whole accepted books; non-synoptic, not ACT (shares LUK narrative)
+    puu: [RUT]
+  bible_val_books:
+    fan: [HEB]
+    puu: [JON]
+  # fallback when the preferred held-out books are absent (e.g. Punu OT has no RUT/JON yet):
+  # pick the smallest available non-synoptic books, deterministically.
+  bible_fallback_test_frac: 0.05
+  bible_fallback_val_frac: 0.03
+  synoptic_books: [MAT, MRK, LUK]       # never placed in test/val
+  bible_avoid_books: [LEV]              # never chosen by the smallest-book fallback (legal restatements)
+  # v0.5: when the smallest candidate book is > 2x the target fraction, hold out chapter ranges instead.
+  # Avoid law-code ranges (LEV, EXO 35-40) — narrative tails only.
+  bible_tail_fallback:
+    test:
+      - {book: DEU, chapters: [31, 34]} # narrative ending (~120 verses); earlier DEU restates EXO/LEV/NUM
+    val:
+      - {book: GEN, tail_frac: 0.02}    # from ch.50 backwards to ~2% of the language's parallel verses
+  doc_test_frac: 0.20
+  doc_val_frac: 0.10
+  # domains whose documents are never held out (they feed RAG/SFT; holding a lexicon file out guts the lexicon)
+  never_heldout_domains: [lexical, grammar]
+  eval_only_rag_pool_frac: 0.5
+  near_dup_jaccard: 0.8                 # MinHash Jaccard on char 5-grams
+  shingle_k: 5
+  minhash_perms: 64
+  minhash_bands: 16
+
+filters:                                 # all TBD-stats
+  min_chars: 2
+  fr_stopword_ratio_max: 0.30
+  fr_stopword_min_tokens: 3              # don't judge 1–2 token strings
+  fr_stopword_min_hits: 1                # absolute hits required besides the ratio (88 variant b: 3)
+  fr_stopword_min_token_len: 3           # tokens shorter than this never count as French (88 variant a)
+  # v0.6 second detector: share of >=3-letter target tokens found in the LS1910 French vocabulary (freq >= 2);
+  # lexicon headword / example tokens of the language are exempted, as for stopwords.
+  fr_vocab_ref: data/raw/ref/ls1910-nt.json
+  fr_vocab_min_freq: 2
+  fr_vocab_min_token_len: 3
+  fr_vocab_share_max: 0.67               # flag fr_in_target when this share of qualifying tokens is French vocab
+  fr_vocab_min_qualifying: 2             # v0.8 §4.2b: >= 2 tokens of >= 3 letters, else not judged (blind spot)
+  # Single source of truth for fr_in_target (also read by src/analysis). Per language, words that are lexicon
+  # headwords / lexicon-example tokens are exempted automatically (v0.4); exemptions are logged.
+  # Unambiguous French function words
+  # only: short items (a, de, en, me, ne, ma, si, ou, ...) are plausible Fang/Punu words/syllables, and
+  # elision splits ("w'a") produce single letters.
+  fr_stopwords: [les, des, une, est, dans, pour, avec, que, qui, pas, nous, vous, sont, cette, mais,
+                 elle, ils, elles, leur, leurs, sur, par, plus, était, étaient, suis, être, avoir, comme,
+                 tout, tous, très, bien, aussi, quand, alors, donc, sans, chez, votre, notre, même, cela,
+                 c'est, n'est, qu'il, j'ai, d'un, d'une]
+  len_ratio_min: 0.4
+  len_ratio_max: 2.5
+  len_ratio_min_chars: 15                # only apply ratio filter when both sides are >= this many chars
+  xsplit_min_words: 3                    # v0.4 short-segment guard for one-sided cross-split matches
+  xsplit_min_chars: 15
+  low_align_percentile: null             # v0.6: percentile cut removed (misalignment is not a tail)
+  low_align_abs: null                    # if set, overrides the percentile
+  # chapters flagged low_align (excluded from SFT/LM/eval) by alignment review; "BOOK.ch", LS1910 numbering.
+  # Only chapters with >= 10 name occurrences may be flagged (v0.8). DEU 7 unflagged after #20 (0.917).
+  low_align_chapters: {}
+  keep_near_dup_kinds: [dialogue_turn, lexicon]
+
+sft:
+  system_prompt: "Tu es un assistant spécialiste du {lang_name}."
+  religious_cap: 0.50
+  max_upsample: 3
+  upsample_domains: [conversational, literary, oral]   # v0.5: lexical and grammar are never upsampled
+  proverb_meaning: true                  # optional task (v0.4), x -> fr_alt / fr_note
+  lang_names: {fan: fang, puu: punu (yipunu), nzb: nzebi, mye: myènè, lev: lembaama}
+
+lm:
+  # spec v0.2 §5a: chunks sized in base-model tokens. chunk_tokens_max = floor(0.9 * max_seq_length) is
+  # derived in code. If the tokenizer can't be loaded locally, fall back to chars / chars_per_token.
+  tokenizer: mlx-community/Qwen2.5-7B-Instruct-4bit
+  max_seq_length: 512
+  max_fill: 0.9
+  chunk_tokens_min: 256
+  chars_per_token: 1.9
+  report_seq_lengths: [512, 1024]       # over-length rate per task x lang (v0.4 §5a reporting)          # fallback only (n=1 measurement by retrievve-92)
+
+rag:
+  max_examples_per_headword: 2
+  grammar_chunk_chars: [800, 1600]       # ~200–400 tokens
